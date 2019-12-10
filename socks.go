@@ -201,7 +201,7 @@ func (cfg *Config) dialSocks5(targetAddr string) (conn net.Conn, stage ConnStage
 		req = append(req, byte(len(cfg.Auth.Password)))
 		req = append(req, []byte(cfg.Auth.Password)...)
 
-		resp, err := cfg.sendReceive(conn, req)
+		resp, err = cfg.sendReceive(conn, req)
 		if err != nil {
 			return
 		} else if len(resp) != 2 {
