@@ -49,11 +49,17 @@ import (
 	"time"
 )
 
+type ConnStage int
+
 // Constants to choose which version of SOCKS protocol to use.
 const (
 	SOCKS4 = iota
 	SOCKS4A
 	SOCKS5
+
+	ConnStageDial ConnStage = iota
+	ConnStageHello
+	ConnStageRequest
 )
 
 type (
@@ -103,9 +109,9 @@ func parse(proxyURI string) (*Config, error) {
 }
 
 // Dial returns the dial function to be used in http.Transport object.
-// Argument proxyURI should be in the format: "socks5://user:password@127.0.0.1:1080?timeout=5s".
+// Argument proxyURI should be in the format: "socks5://user:password@127.0.0.1:1080?timeout=2s&deadline=5s".
 // The protocol could be socks5, socks4 and socks4a.
-func Dial(proxyURI string) func(string, string) (net.Conn, error) {
+func Dial(proxyURI string) func(string, string) (net.Conn, ConnStage, error) {
 	cfg, err := parse(proxyURI)
 	if err != nil {
 		return dialError(err)
@@ -116,34 +122,40 @@ func Dial(proxyURI string) func(string, string) (net.Conn, error) {
 // DialSocksProxy returns the dial function to be used in http.Transport object.
 // Argument socksType should be one of SOCKS4, SOCKS4A and SOCKS5.
 // Argument proxy should be in this format "127.0.0.1:1080".
-func DialSocksProxy(socksType int, proxy string) func(string, string) (net.Conn, error) {
+func DialSocksProxy(socksType int, proxy string) func(string, string) (net.Conn, ConnStage, error) {
 	return (&Config{Proto: socksType, Host: proxy}).dialFunc()
 }
 
-func (c *Config) dialFunc() func(string, string) (net.Conn, error) {
+func (c *Config) dialFunc() func(string, string) (net.Conn, ConnStage, error) {
 	switch c.Proto {
 	case SOCKS5:
-		return func(_, targetAddr string) (conn net.Conn, err error) {
+		return func(_, targetAddr string) (conn net.Conn, stage ConnStage, err error) {
 			return c.dialSocks5(targetAddr)
 		}
 	case SOCKS4, SOCKS4A:
-		return func(_, targetAddr string) (conn net.Conn, err error) {
+		return func(_, targetAddr string) (conn net.Conn, stage ConnStage, err error) {
 			return c.dialSocks4(targetAddr)
 		}
 	}
 	return dialError(fmt.Errorf("unknown SOCKS protocol %v", c.Proto))
 }
 
-func (cfg *Config) dialSocks5(targetAddr string) (conn net.Conn, err error) {
+func (cfg *Config) dialSocks5(targetAddr string) (conn net.Conn, stage ConnStage, err error) {
+	stage = ConnStageDial
 	proxy := cfg.Host
 
 	// dial TCP
-	conn, err = net.Dial("tcp", proxy)
+	if cfg.Timeout > 0 {
+		conn, err = net.DialTimeout("tcp", proxy, cfg.Timeout)
+	} else {
+		conn, err = net.Dial("tcp", proxy)
+	}
 	if err != nil {
 		return
 	}
 
 	// version identifier/method selection request
+	stage = ConnStageHello
 	req := []byte{
 		5, // version number
 		1, // number of methods
@@ -164,9 +176,10 @@ func (cfg *Config) dialSocks5(targetAddr string) (conn net.Conn, err error) {
 	}
 
 	// detail request
+	stage = ConnStageRequest
 	host, port, err := splitHostPort(targetAddr)
 	if err != nil {
-		return nil, err
+		return nil, stage, err
 	}
 	req = []byte{
 		5,               // version number
@@ -192,17 +205,23 @@ func (cfg *Config) dialSocks5(targetAddr string) (conn net.Conn, err error) {
 	return
 }
 
-func (cfg *Config) dialSocks4(targetAddr string) (conn net.Conn, err error) {
+func (cfg *Config) dialSocks4(targetAddr string) (conn net.Conn, stage ConnStage, err error) {
+	stage = ConnStageDial
 	socksType := cfg.Proto
 	proxy := cfg.Host
 
 	// dial TCP
-	conn, err = net.Dial("tcp", proxy)
+	if cfg.Timeout > 0 {
+		conn, err = net.DialTimeout("tcp", proxy, cfg.Timeout)
+	} else {
+		conn, err = net.Dial("tcp", proxy)
+	}
 	if err != nil {
 		return
 	}
 
 	// connection request
+	stage = ConnStageRequest
 	host, port, err := splitHostPort(targetAddr)
 	if err != nil {
 		return
@@ -247,7 +266,7 @@ func (cfg *Config) dialSocks4(targetAddr string) (conn net.Conn, err error) {
 	}
 	// clear the deadline before returning
 	if err := conn.SetDeadline(time.Time{}); err != nil {
-		return nil, err
+		return nil, stage, err
 	}
 	return
 }
@@ -258,6 +277,7 @@ func (cfg *Config) sendReceive(conn net.Conn, req []byte) (resp []byte, err erro
 			return nil, err
 		}
 	}
+
 	_, err = conn.Write(req)
 	if err != nil {
 		return
@@ -309,8 +329,8 @@ func splitHostPort(addr string) (host string, port uint16, err error) {
 	return
 }
 
-func dialError(err error) func(string, string) (net.Conn, error) {
-	return func(_, _ string) (net.Conn, error) {
-		return nil, err
+func dialError(err error) func(string, string) (net.Conn, ConnStage, error) {
+	return func(_, _ string) (net.Conn, ConnStage, error) {
+		return nil, ConnStageDial, err
 	}
 }
