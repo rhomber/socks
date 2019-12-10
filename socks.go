@@ -117,7 +117,18 @@ func parse(proxyURI string) (*Config, error) {
 // Dial returns the dial function to be used in http.Transport object.
 // Argument proxyURI should be in the format: "socks5://user:password@127.0.0.1:1080?timeout=2s&deadline=5s".
 // The protocol could be socks5, socks4 and socks4a.
-func Dial(proxyURI string) func(string, string) (net.Conn, ConnStage, error) {
+func Dial(proxyURI string) func(string, string) (net.Conn, error) {
+	dialFunc := DialEnhanced(proxyURI)
+
+	return func(net string, addr string) (net.Conn, error) {
+		conn, _, err := dialFunc(net, addr)
+
+		return conn, err
+	}
+}
+
+// DialEnhanced returns a dial function that additionally returns the connection stage that was reached.
+func DialEnhanced(proxyURI string) func(string, string) (net.Conn, ConnStage, error) {
 	cfg, err := parse(proxyURI)
 	if err != nil {
 		return dialError(err)
