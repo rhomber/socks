@@ -58,9 +58,15 @@ const (
 	SOCKS5
 
 	ConnStageDial ConnStage = iota
+	ConnStageAuth
 	ConnStageHello
 	ConnStageRequest
+
+	AuthMethodNone     byte = 0
+	AuthMethodUsername byte = 2
 )
+
+var ErrAuthFailed = errors.New("auth failed.")
 
 type (
 	Config struct {
@@ -154,12 +160,17 @@ func (cfg *Config) dialSocks5(targetAddr string) (conn net.Conn, stage ConnStage
 		return
 	}
 
+	authMethod := AuthMethodNone
+	if cfg.Auth.Username != "" && cfg.Auth.Password != "" {
+		authMethod = AuthMethodUsername
+	}
+
 	// version identifier/method selection request
 	stage = ConnStageHello
 	req := []byte{
-		5, // version number
-		1, // number of methods
-		0, // method 0: no authentication (only anonymous access supported for now)
+		5,          // version number
+		1,          // number of methods
+		authMethod, // authentication method (see: https://tools.ietf.org/html/rfc1928)
 	}
 	resp, err := cfg.sendReceive(conn, req)
 	if err != nil {
@@ -170,9 +181,39 @@ func (cfg *Config) dialSocks5(targetAddr string) (conn net.Conn, stage ConnStage
 	} else if resp[0] != 5 {
 		err = errors.New("Server does not support Socks 5.")
 		return
-	} else if resp[1] != 0 { // no auth
+	} else if resp[1] != authMethod { // auth not supported
 		err = errors.New("socks method negotiation failed.")
 		return
+	}
+
+	if authMethod == AuthMethodUsername {
+		// authenticate
+		stage = ConnStageAuth
+		req = []byte{
+			1, // version number
+		}
+
+		// username length and username
+		req = append(req, byte(len(cfg.Auth.Username)))
+		req = append(req, []byte(cfg.Auth.Username)...)
+
+		// password length and password
+		req = append(req, byte(len(cfg.Auth.Password)))
+		req = append(req, []byte(cfg.Auth.Password)...)
+
+		resp, err := cfg.sendReceive(conn, req)
+		if err != nil {
+			return
+		} else if len(resp) != 2 {
+			err = errors.New("Server does not respond properly.")
+			return
+		} else if resp[0] != 1 {
+			err = errors.New("Server does not support Socks 5 Auth Version 1.")
+			return
+		} else if resp[1] != 0 { // auth failed
+			err = ErrAuthFailed
+			return
+		}
 	}
 
 	// detail request
