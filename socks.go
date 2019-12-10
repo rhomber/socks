@@ -9,7 +9,7 @@ A complete example using this package:
 	package main
 
 	import (
-		"h12.io/socks"
+		"github.com/rhomber/socks"
 		"fmt"
 		"net/http"
 		"io/ioutil"
@@ -20,7 +20,7 @@ A complete example using this package:
 		tr := &http.Transport{Dial: dialSocksProxy}
 		httpClient := &http.Client{Transport: tr}
 
-		bodyText, err := TestHttpsGet(httpClient, "https://h12.io/about")
+		bodyText, err := TestHttpsGet(httpClient, "https://github.com/rhomber")
 		if err != nil {
 			fmt.Println(err.Error())
 		}
@@ -38,7 +38,7 @@ A complete example using this package:
 		return
 	}
 */
-package socks // import "h12.io/socks"
+package socks // import "github.com/rhomber/socks"
 
 import (
 	"errors"

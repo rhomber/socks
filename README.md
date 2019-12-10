@@ -8,11 +8,11 @@ SOCKS is a SOCKS4, SOCKS4A and SOCKS5 proxy package for Go.
 ## Quick Start
 ### Get the package
 
-    go get -u "h12.io/socks"
+    go get -u "github.com/rhomber/socks"
 
 ### Import the package
 
-    import "h12.io/socks"
+    import "github.com/rhomber/socks"
 
 ### Create a SOCKS proxy dialing function
 
@@ -31,7 +31,7 @@ import (
 	"log"
 	"net/http"
 
-	"h12.io/socks"
+	"github.com/rhomber/socks"
 )
 
 func main() {
