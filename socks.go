@@ -66,7 +66,9 @@ const (
 	AuthMethodUsername byte = 2
 )
 
-var ErrAuthFailed = errors.New("auth failed.")
+var ErrUnexpectedResponse = errors.New("unexpected response from remote socks server")
+var ErrAuthFailed = errors.New("socks auth failed")
+var ErrAuthMethodFailed = errors.New("socks auth method negotiation failed")
 
 type (
 	Config struct {
@@ -115,7 +117,7 @@ func parse(proxyURI string) (*Config, error) {
 }
 
 // Dial returns the dial function to be used in http.Transport object.
-// Argument proxyURI should be in the format: "socks5://user:password@127.0.0.1:1080?timeout=2s&deadline=5s".
+// Argument proxyURI should be in the format: "socks5://user:password@127.0.0.1:1080?timeout=5s".
 // The protocol could be socks5, socks4 and socks4a.
 func Dial(proxyURI string) func(string, string) (net.Conn, error) {
 	dialFunc := DialEnhanced(proxyURI)
@@ -187,13 +189,13 @@ func (cfg *Config) dialSocks5(targetAddr string) (conn net.Conn, stage ConnStage
 	if err != nil {
 		return
 	} else if len(resp) != 2 {
-		err = errors.New("Server does not respond properly.")
+		err = ErrUnexpectedResponse
 		return
 	} else if resp[0] != 5 {
 		err = errors.New("Server does not support Socks 5.")
 		return
 	} else if resp[1] != authMethod { // auth not supported
-		err = errors.New("socks method negotiation failed.")
+		err = ErrAuthMethodFailed
 		return
 	}
 
@@ -216,7 +218,7 @@ func (cfg *Config) dialSocks5(targetAddr string) (conn net.Conn, stage ConnStage
 		if err != nil {
 			return
 		} else if len(resp) != 2 {
-			err = errors.New("Server does not respond properly.")
+			err = ErrUnexpectedResponse
 			return
 		} else if resp[0] != 1 {
 			err = errors.New("Server does not support Socks 5 Auth Version 1.")
@@ -249,7 +251,7 @@ func (cfg *Config) dialSocks5(targetAddr string) (conn net.Conn, stage ConnStage
 	if err != nil {
 		return
 	} else if len(resp) != 10 {
-		err = errors.New("Server does not respond properly.")
+		err = ErrUnexpectedResponse
 	} else if resp[1] != 0 {
 		err = errors.New("Can't complete SOCKS5 connection.")
 	}
@@ -301,7 +303,7 @@ func (cfg *Config) dialSocks4(targetAddr string) (conn net.Conn, stage ConnStage
 	if err != nil {
 		return
 	} else if len(resp) != 8 {
-		err = errors.New("Server does not respond properly.")
+		err = ErrUnexpectedResponse
 		return
 	}
 	switch resp[1] {
