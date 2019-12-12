@@ -253,7 +253,26 @@ func (cfg *Config) dialSocks5(targetAddr string) (conn net.Conn, stage ConnStage
 	} else if len(resp) != 10 {
 		err = ErrUnexpectedResponse
 	} else if resp[1] != 0 {
-		err = errors.New("Can't complete SOCKS5 connection.")
+		connTrace := fmt.Sprintf("%s (proxy) -> %s (target)", cfg.Host, targetAddr)
+
+		switch resp[1] {
+		case 2:
+			err = fmt.Errorf("%s: connection not allowed by ruleset", connTrace)
+		case 3:
+			err = fmt.Errorf("%s: Network unreachable", connTrace)
+		case 4:
+			err = fmt.Errorf("%s: Host unreachable", connTrace)
+		case 5:
+			err = fmt.Errorf("%s: Connection refused", connTrace)
+		case 6:
+			err = fmt.Errorf("%s: TTL expired", connTrace)
+		case 7:
+			err = fmt.Errorf("%s: Command not supported", connTrace)
+		case 8:
+			err = fmt.Errorf("%s: Address type not supported", connTrace)
+		default:
+			err = fmt.Errorf("%s: general SOCKS server failure", connTrace)
+		}
 	}
 
 	return
